@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f3a5f">
+<title>Library Tracker</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<style>
+:root{--bg:#f2f5fa;--card:#fff;--text:#1b2433;--muted:#6b778c;--pri:#1f3a5f;--acc:#2f6fdb;--ok:#1b7f3b;--warn:#b36b00;--bad:#c62828;--line:#e3e8f0}
+@media(prefers-color-scheme:dark){:root{--bg:#10151f;--card:#1a2230;--text:#e8edf5;--muted:#93a0b5;--pri:#0f2540;--acc:#4f8ff0;--ok:#4ade80;--warn:#fbbf24;--bad:#f87171;--line:#2a3445}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--text)}
+header{background:var(--pri);color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:20px}
+main{max-width:900px;margin:0 auto;padding:16px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;text-align:center}
+.stat b{display:block;font-size:26px}
+.stat span{font-size:12px;color:var(--muted)}
+.box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+input{flex:1;min-width:140px;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:15px}
+button{padding:10px 14px;border:0;border-radius:8px;background:var(--acc);color:#fff;font-size:14px;cursor:pointer}
+button.r{background:var(--bad)}
+.chips button{background:var(--card);color:var(--text);border:1px solid var(--line)}
+.chips button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.book{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--ok);border-radius:12px;padding:12px;margin-top:10px}
+.book.out{border-left-color:var(--warn)}
+.book.late{border-left-color:var(--bad)}
+.book h3{margin:0;font-size:16px}
+.book p{margin:3px 0 0;font-size:13px;color:var(--muted)}
+.book p.tag{font-weight:600}
+.empty{text-align:center;color:var(--muted);padding:30px}
+footer{text-align:center;color:var(--muted);font-size:13px;margin:24px 0}
+</style>
+</head>
+<body>
+<header><h1>📚 Library Tracker</h1><button onclick="exportCsv()">Export CSV</button></header>
+<main>
+<div class="stats">
+<div class="stat"><b id="s1">0</b><span>Total</span></div>
+<div class="stat"><b id="s2">0</b><span>Issued</span></div>
+<div class="stat"><b id="s3">0</b><span>Overdue</span></div>
+</div>
+<div class="box row"><input id="t" placeholder="Book title"><input id="a" placeholder="Author"><button onclick="add()">Add Book</button></div>
+<div class="box">
+<input id="q" placeholder="Search title / author" oninput="render()" style="width:100%">
+<div class="row chips" style="margin-top:8px">
+<button data-f="all" class="on">All</button><button data-f="free">Available</button><button data-f="out">Issued</button><button data-f="late">Overdue</button>
+</div>
+</div>
+<div id="list"></div>
+<footer>Developed by DevRishi</footer>
+</main>
+<script>
+const KEY="library_books_v1",LOAN=14,FINE=2;
+let books=[];try{books=JSON.parse(localStorage.getItem(KEY))||[]}catch(e){}
+let filter="all";
+const $=id=>document.getElementById(id);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(books))}catch(e){}};
+const ymd=n=>new Date(Date.now()+n*864e5-new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const days=(a,b)=>Math.round((new Date(a)-new Date(b))/864e5);
+const late=b=>b.to&&b.due<ymd(0);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function add(){
+ const t=$("t").value.trim(),a=$("a").value.trim();
+ if(!t||!a)return alert("Please enter both Title and Author.");
+ books.push({id:Date.now(),title:t,author:a,to:"",due:""});
+ $("t").value=$("a").value="";save();render();
+}
+function issue(id){
+ const b=books.find(x=>x.id==id),n=(prompt("Student name:")||"").trim();
+ if(!n)return;
+ b.to=n;b.due=ymd(LOAN);save();render();alert("Issued to "+n+". Due date: "+b.due);
+}
+function ret(id){
+ const b=books.find(x=>x.id==id),d=days(ymd(0),b.due);
+ let m="Book returned successfully.";
+ if(d>0)m+="\nLate by "+d+" days. Fine: Rs "+d*FINE;
+ b.to=b.due="";save();render();alert(m);
+}
+function del(id){if(confirm("Delete this book permanently?")){books=books.filter(x=>x.id!=id);save();render()}}
+function exportCsv(){
+ const r=[["Title","Author","Issued to","Due"],...books.map(b=>[b.title,b.author,b.to,b.due])];
+ const csv=r.map(x=>x.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");
+ const a=document.createElement("a");
+ a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+ a.download="books.csv";a.click();
+}
+function render(){
+ const q=$("q").value.toLowerCase();
+ $("s1").textContent=books.length;
+ $("s2").textContent=books.filter(b=>b.to).length;
+ $("s3").textContent=books.filter(late).length;
+ const list=books.filter(b=>(b.title+" "+b.author).toLowerCase().includes(q))
+  .filter(b=>filter=="all"||(filter=="free"&&!b.to)||(filter=="out"&&b.to)||(filter=="late"&&late(b)));
+ $("list").innerHTML=list.length?list.map(b=>`<div class="book ${late(b)?"late":b.to?"out":""}"><div><h3>${esc(b.title)}</h3><p>${esc(b.author)}</p><p class="tag" style="color:var(--${late(b)?"bad":b.to?"warn":"ok"})">${b.to?"Issued to "+esc(b.to)+" · due "+b.due+(late(b)?" · OVERDUE":""):"Available"}</p></div><div class="row">${b.to?`<button onclick="ret(${b.id})">Return</button>`:`<button onclick="issue(${b.id})">Issue</button>`}<button class="r" onclick="del(${b.id})">Delete</button></div></div>`).join(""):'<div class="empty">No books found</div>';
+}
+document.querySelectorAll(".chips button").forEach(btn=>btn.onclick=()=>{
+ filter=btn.dataset.f;
+ document.querySelectorAll(".chips button").forEach(x=>x.classList.toggle("on",x==btn));
+ render();
+});
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js");
+render();
+</script>
+</body>
+</html>
